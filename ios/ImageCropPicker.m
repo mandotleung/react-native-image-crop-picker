@@ -63,6 +63,9 @@ RCT_EXPORT_MODULE();
                                 @"loadingLabelText": @"Processing assets...",
                                 @"mediaType": @"any",
                                 @"showsSelectedCount": @YES
+                                @"copyMetaData":@NO,
+                                @"checkProjectionType": @NO,
+                                @"uploadSourceImage": @NO,
                                 };
         self.compression = [[Compression alloc] init];
     }
@@ -466,10 +469,29 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  UIImage *imgT = [UIImage imageWithData:imageData];
                                  UIImage *imageT = [imgT fixOrientation];
                                  
-                                 ImageResult *imageResult = [self.compression compressImage:imageT withOptions:self.options];
+                                 ImageResult *imageResult = [[ImageResult alloc] init];
+                                 if([self.options objectForKey:@"uploadSourceImage"])
+                                 {
+                                     imageResult.width = [NSNumber numberWithFloat:imageT.size.width];
+                                     imageResult.height = [NSNumber numberWithFloat:imageT.size.height];
+                                     imageResult.image = imageT;
+                                     imageResult.data = imageData;
+                                     imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? sourceURL.pathExtension:dataUTI)];
+                                 }
+                                 else {
+                                     imageResult = [self.compression compressImage:imageT withOptions:self.options];
+                                 }
+                                 
                                  NSString *filePath = [self persistFile:imageResult.data];
                                  
-                                 if (filePath == nil) {
+                                 BOOL success = true;
+                                 //if uploadSourceImage, no need to copyMetaData
+                                 if(![self.options objectForKey:@"uploadSourceImage"] && [self.options objectForKey:@"copyMetaData"])
+                                 {
+                                     success = [self addMetaDataToFilePath:filePath fromSrc:imageData AndJpg:imageResult.data];
+                                 }
+                                 if(!success || filePath == nil)
+                                 {
                                      [indicatorView stopAnimating];
                                      [overlayView removeFromSuperview];
                                      [imagePickerController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
@@ -478,16 +500,23 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                      return;
                                  }
                                  
-                                 [selections addObject:[self createAttachmentResponse:filePath
-                                                                            withSourceURL:[sourceURL absoluteString]
-                                                                  withLocalIdentifier: phAsset.localIdentifier
-                                                                         withFilename: [phAsset valueForKey:@"filename"]
-                                                                            withWidth:imageResult.width
-                                                                           withHeight:imageResult.height
-                                                                             withMime:imageResult.mime
-                                                                             withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
-                                                                             withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
-                                                        ]];
+                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath
+                                                                                                                                           withSourceURL:[sourceURL absoluteString]
+                                                                                                                                     withLocalIdentifier: phAsset.localIdentifier
+                                                                                                                                            withFilename: [phAsset valueForKey:@"filename"]
+                                                                                                                                               withWidth:imageResult.width
+                                                                                                                                              withHeight:imageResult.height
+                                                                                                                                                withMime:imageResult.mime
+                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
+                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
+                                                                                                                           ]];
+                                 
+                                 if([self.options objectForKey:@"checkProjectionType"])
+                                     [responseForResolve
+                                      setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
+                                      forKey:@"is360Photo"];
+
+                                 [selections addObject:responseForResolve];
                              }
                              processed++;
                              [lock unlock];
@@ -535,7 +564,60 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                      dispatch_async(dispatch_get_main_queue(), ^{
                          [indicatorView stopAnimating];
                          [overlayView removeFromSuperview];
-                         [self processSingleImagePick:[UIImage imageWithData:imageData] withViewController:imagePickerController withSourceURL:[sourceURL absoluteString] withLocalIdentifier:phAsset.localIdentifier withFilename:[phAsset valueForKey:@"filename"]];
+                         
+                         //resolve promise directly if not require cropping
+                         if ([[[self options] objectForKey:@"cropping"] boolValue])
+                             [self processSingleImagePick:[UIImage imageWithData:imageData] withViewController:imagePickerController withSourceURL:[sourceURL absoluteString] withLocalIdentifier:phAsset.localIdentifier withFilename:[phAsset valueForKey:@"filename"]];
+                         else
+                         {
+                             UIImage* image = [UIImage imageWithData:imageData];
+                             
+                             ImageResult *imageResult = [[ImageResult alloc] init];
+                             if([self.options objectForKey:@"uploadSourceImage"])
+                             {
+                                 imageResult.width = [NSNumber numberWithFloat:image.size.width];
+                                 imageResult.height = [NSNumber numberWithFloat:image.size.height];
+                                 imageResult.image = image;
+                                 imageResult.data = imageData;
+                                 imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? sourceURL.pathExtension:dataUTI)];
+                             }
+                             else
+                                 imageResult = [self.compression compressImage:image withOptions:self.options];
+                             
+                             NSString *filePath = [self persistFile:imageResult.data];
+                             
+                             BOOL success = true;
+                             //if uploadSourceImage, no need to copyMetaData
+                             if(![self.options objectForKey:@"uploadSourceImage"] && [self.options objectForKey:@"copyMetaData"])
+                             {
+                                 success = [self addMetaDataToFilePath:filePath fromSrc:imageData AndJpg:imageResult.data];
+                             }
+                             
+                             if(!success || filePath == nil)
+                             {
+                                 [indicatorView stopAnimating];
+                                 [overlayView removeFromSuperview];
+                                 [imagePickerController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
+                                     self.reject(ERROR_CANNOT_SAVE_IMAGE_KEY, ERROR_CANNOT_SAVE_IMAGE_MSG, nil);
+                                 }]];
+                                 return;
+                             }
+                             
+                             // Wait for viewController to dismiss before resolving, or we lose the ability to display
+                             // Alert.alert in the .then() handler.
+                             [imagePickerController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
+                                 
+                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: sourceURL.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
+                                                                                                                           ]];
+                                 
+                                 if([self.options objectForKey:@"checkProjectionType"])
+                                     [responseForResolve
+                                      setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
+                                      forKey:@"is360Photo"];
+                                 
+                                 self.resolve(responseForResolve);
+                             }]];
+                         }
                      });
                  }];
             }
@@ -732,6 +814,115 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                   usingCropRect:(CGRect)cropRect
                   rotationAngle:(CGFloat)rotationAngle {
     [self imageCropViewController:controller didCropImage:croppedImage usingCropRect:cropRect];
+}
+
+
+//Tested the metadata to identitfy 360 photo will be cleared after UIImageJPEGRepresentation, add this method to use Image I/O to copy the metadata from source NSData to jpg image
+- (BOOL) addMetaDataToFilePath:(NSString*)filePath fromSrc:(NSData*)srcImageData AndJpg:(NSData*)jpgImageData{
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)srcImageData, NULL);
+    
+    CGImageSourceRef jpgSource = CGImageSourceCreateWithData((__bridge CFDataRef)jpgImageData, NULL);
+    
+    CGImageRef jpgImage = CGImageSourceCreateImageAtIndex(jpgSource, 0, NULL);
+    
+    CGImageMetadataRef metadata = CGImageSourceCopyMetadataAtIndex(source,0,NULL);
+    
+    //uncomment and try this logic for copy specify metadata
+    //    NSArray *metadataArray = nil;
+    //    if (metadata) {
+    //        metadataArray = CFBridgingRelease(CGImageMetadataCopyTags(metadata));
+    //        //                                     CFRelease(metadata);
+    //    }
+    //
+    //    //                                 NSDictionary *metaDataDic = [NSDictionary dictionary];
+    //
+    //    for (id aRef in metadataArray)
+    //    {
+    //        CGImageMetadataTagRef currentRef = (__bridge CGImageMetadataTagRef)(aRef);
+    //        CGImageMetadataType type = CGImageMetadataTagGetType(currentRef);
+    //        CFStringRef nameSpace = CGImageMetadataTagCopyNamespace(currentRef);
+    //        CFStringRef prefix = CGImageMetadataTagCopyPrefix(currentRef);
+    //        CFStringRef name = CGImageMetadataTagCopyName(currentRef);
+    //        CFTypeRef value = CGImageMetadataTagCopyValue(currentRef);
+    //        CFStringRef valueTypeStr =  CFCopyTypeIDDescription(CFGetTypeID(value));
+    //
+    //        if([((__bridge NSString*)prefix) isEqual: @"GPano"] &&
+    //           [((__bridge NSString*)name) isEqual: @"ProjectionType"] &&
+    //           [((__bridge NSString*)value) isEqual: @"equirectangular"])
+    //        {
+    //            //                                         [metaDataDic setValue:(__bridge NSString*)nameSpace forKey:@"nameSpace"];
+    //            //                                         [metaDataDic setValue:(__bridge NSString*)prefix forKey:@"prefix"];
+    //            //                                         [metaDataDic setValue:(__bridge NSString*)name forKey:@"name"];
+    //            //                                         [metaDataDic setValue:(__bridge NSString*)value forKey:@"value"];
+    //            //                                         [metaDataDic setValue:(__bridge NSString*)valueTypeStr forKey:@"valueTypeStr"];
+    //        }
+    //    }
+    
+    CFStringRef UTI = CGImageSourceGetType(source); //this is the type of image (e.g., public.jpeg)
+    
+    //this will be the data CGImageDestinationRef will write into
+    NSMutableData *dest_data = [NSMutableData data];
+    
+    CGImageDestinationRef destination = CGImageDestinationCreateWithData((CFMutableDataRef)dest_data,UTI,1,NULL);
+    
+    if(!destination) {
+        NSLog(@"***Could not create image destination ***");
+    }
+    
+    CGImageDestinationAddImageAndMetadata(destination, jpgImage, metadata, NULL);
+    
+    BOOL success = NO;
+    success = CGImageDestinationFinalize(destination);
+    
+    if(!success) {
+        NSLog(@"***Could not create data from image destination ***");
+    }
+    
+    BOOL status = [dest_data writeToFile:filePath atomically:YES];
+    
+    CFRelease(jpgSource);
+    CFRelease(jpgImage);
+    CFRelease(destination);
+    CFRelease(source);
+    
+    return status;
+}
+
+//check is 360, refer to facebook - https://www.facebook.com/notes/eric-cheng/editing-360-photos-injecting-metadata/10156930564975277
+- (BOOL) is360Photo:(NSData*) imageData size:(CGSize)imageSize{
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)imageData, NULL);
+    
+    CGImageMetadataRef metadata = CGImageSourceCopyMetadataAtIndex(source,0,NULL);
+    
+    NSArray *metadataArray = nil;
+    
+    if (metadata) {
+        metadataArray = CFBridgingRelease(CGImageMetadataCopyTags(metadata));
+        CFRelease(metadata);
+    }
+    CFRelease(source);
+    
+    for (id aRef in metadataArray)
+    {
+        CGImageMetadataTagRef currentRef = (__bridge CGImageMetadataTagRef)(aRef);
+        CGImageMetadataType type = CGImageMetadataTagGetType(currentRef);
+        CFStringRef nameSpace = CGImageMetadataTagCopyNamespace(currentRef);
+        CFStringRef prefix = CGImageMetadataTagCopyPrefix(currentRef);
+        CFStringRef name = CGImageMetadataTagCopyName(currentRef);
+        CFTypeRef value = CGImageMetadataTagCopyValue(currentRef);
+        CFStringRef valueTypeStr =  CFCopyTypeIDDescription(CFGetTypeID(value));
+        
+        if([((__bridge NSString*)prefix) isEqual: @"GPano"] &&
+           [((__bridge NSString*)name) isEqual: @"ProjectionType"] &&
+           [((__bridge NSString*)value) isEqual: @"equirectangular"] &&
+           imageSize.width >0 && imageSize.width <= 6000 &&
+           imageSize.height >0 && imageSize.height <= 3000 &&
+           imageSize.width == imageSize.height * 2)
+        {
+            return YES;
+        }
+    }
+    return NO;
 }
 
 @end
