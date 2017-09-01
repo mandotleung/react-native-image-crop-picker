@@ -62,7 +62,7 @@ RCT_EXPORT_MODULE();
                                 @"compressVideoPreset": @"MediumQuality",
                                 @"loadingLabelText": @"Processing assets...",
                                 @"mediaType": @"any",
-                                @"showsSelectedCount": @YES
+                                @"showsSelectedCount": @YES,
                                 @"copyMetaData":@NO,
                                 @"checkProjectionType": @NO,
                                 @"compressImage": @YES,
