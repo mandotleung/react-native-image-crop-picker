@@ -65,7 +65,7 @@ RCT_EXPORT_MODULE();
                                 @"showsSelectedCount": @YES
                                 @"copyMetaData":@NO,
                                 @"checkProjectionType": @NO,
-                                @"uploadSourceImage": @NO,
+                                @"compressImage": @YES,
                                 };
         self.compression = [[Compression alloc] init];
     }
@@ -412,26 +412,26 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
 - (void)qb_imagePickerController:
 (QBImagePickerController *)imagePickerController
           didFinishPickingAssets:(NSArray *)assets {
-
+    
     PHImageManager *manager = [PHImageManager defaultManager];
     PHImageRequestOptions* options = [[PHImageRequestOptions alloc] init];
     options.synchronous = NO;
     options.networkAccessAllowed = YES;
-
+    
     if ([[[self options] objectForKey:@"multiple"] boolValue]) {
         NSMutableArray *selections = [[NSMutableArray alloc] init];
-
+        
         [self showActivityIndicator:^(UIActivityIndicatorView *indicatorView, UIView *overlayView) {
             NSLock *lock = [[NSLock alloc] init];
             __block int processed = 0;
-
+            
             for (PHAsset *phAsset in assets) {
-
+                
                 if (phAsset.mediaType == PHAssetMediaTypeVideo) {
                     [self getVideoAsset:phAsset completion:^(NSDictionary* video) {
                         dispatch_async(dispatch_get_main_queue(), ^{
                             [lock lock];
-
+                            
                             if (video == nil) {
                                 [indicatorView stopAnimating];
                                 [overlayView removeFromSuperview];
@@ -440,11 +440,11 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                 }]];
                                 return;
                             }
-
+                            
                             [selections addObject:video];
                             processed++;
                             [lock unlock];
-
+                            
                             if (processed == [assets count]) {
                                 [indicatorView stopAnimating];
                                 [overlayView removeFromSuperview];
@@ -470,23 +470,22 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  UIImage *imageT = [imgT fixOrientation];
                                  
                                  ImageResult *imageResult = [[ImageResult alloc] init];
-                                 if([self.options objectForKey:@"uploadSourceImage"])
+                                 if(![self.options objectForKey:@"compressImage"])
                                  {
                                      imageResult.width = [NSNumber numberWithFloat:imageT.size.width];
                                      imageResult.height = [NSNumber numberWithFloat:imageT.size.height];
                                      imageResult.image = imageT;
                                      imageResult.data = imageData;
-                                     imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? sourceURL.pathExtension:dataUTI)];
+                                     imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? [sourceURL.pathExtension lowercaseString]:dataUTI)];
                                  }
                                  else {
                                      imageResult = [self.compression compressImage:imageT withOptions:self.options];
                                  }
-                                 
                                  NSString *filePath = [self persistFile:imageResult.data];
                                  
                                  BOOL success = true;
-                                 //if uploadSourceImage, no need to copyMetaData
-                                 if(![self.options objectForKey:@"uploadSourceImage"] && [self.options objectForKey:@"copyMetaData"])
+                                 //if not compressImage, no need to copyMetaData
+                                 if([self.options objectForKey:@"compressImage"] && [self.options objectForKey:@"copyMetaData"])
                                  {
                                      success = [self addMetaDataToFilePath:filePath fromSrc:imageData AndJpg:imageResult.data];
                                  }
@@ -500,29 +499,20 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                      return;
                                  }
                                  
-                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath
-                                                                                                                                           withSourceURL:[sourceURL absoluteString]
-                                                                                                                                     withLocalIdentifier: phAsset.localIdentifier
-                                                                                                                                            withFilename: [phAsset valueForKey:@"filename"]
-                                                                                                                                               withWidth:imageResult.width
-                                                                                                                                              withHeight:imageResult.height
-                                                                                                                                                withMime:imageResult.mime
-                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
-                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
-                                                                                                                           ]];
+                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: sourceURL.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]];
                                  
                                  if([self.options objectForKey:@"checkProjectionType"])
                                      [responseForResolve
                                       setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
                                       forKey:@"is360Photo"];
-
+                                 
                                  [selections addObject:responseForResolve];
                              }
                              processed++;
                              [lock unlock];
-
+                             
                              if (processed == [assets count]) {
-
+                                 
                                  [indicatorView stopAnimating];
                                  [overlayView removeFromSuperview];
                                  [imagePickerController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
@@ -537,7 +527,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
         }];
     } else {
         PHAsset *phAsset = [assets objectAtIndex:0];
-
+        
         [self showActivityIndicator:^(UIActivityIndicatorView *indicatorView, UIView *overlayView) {
             if (phAsset.mediaType == PHAssetMediaTypeVideo) {
                 [self getVideoAsset:phAsset completion:^(NSDictionary* video) {
@@ -565,7 +555,6 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                          [indicatorView stopAnimating];
                          [overlayView removeFromSuperview];
                          
-                         //resolve promise directly if not require cropping
                          if ([[[self options] objectForKey:@"cropping"] boolValue])
                              [self processSingleImagePick:[UIImage imageWithData:imageData] withViewController:imagePickerController withSourceURL:[sourceURL absoluteString] withLocalIdentifier:phAsset.localIdentifier withFilename:[phAsset valueForKey:@"filename"]];
                          else
@@ -573,13 +562,13 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              UIImage* image = [UIImage imageWithData:imageData];
                              
                              ImageResult *imageResult = [[ImageResult alloc] init];
-                             if([self.options objectForKey:@"uploadSourceImage"])
+                             if(![self.options objectForKey:@"compressImage"])
                              {
                                  imageResult.width = [NSNumber numberWithFloat:image.size.width];
                                  imageResult.height = [NSNumber numberWithFloat:image.size.height];
                                  imageResult.image = image;
                                  imageResult.data = imageData;
-                                 imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? sourceURL.pathExtension:dataUTI)];
+                                 imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? [sourceURL.pathExtension lowercaseString]:dataUTI)];
                              }
                              else
                                  imageResult = [self.compression compressImage:image withOptions:self.options];
@@ -587,8 +576,8 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              NSString *filePath = [self persistFile:imageResult.data];
                              
                              BOOL success = true;
-                             //if uploadSourceImage, no need to copyMetaData
-                             if(![self.options objectForKey:@"uploadSourceImage"] && [self.options objectForKey:@"copyMetaData"])
+                             //if not compressImage, no need to copyMetaData
+                             if([self.options objectForKey:@"compressImage"] && [self.options objectForKey:@"copyMetaData"])
                              {
                                  success = [self addMetaDataToFilePath:filePath fromSrc:imageData AndJpg:imageResult.data];
                              }
