@@ -1,7 +1,7 @@
 # Fork from https://github.com/Elyx0/react-native-document-picker
-- Update iOS to support copy 360 photo metadata
+- (iOS only)support copy 360 photo metadata
+- (iOS only)Add options return source image data instead of compress
 - Check is 360 photo
-- Add options return source image data instead of compress
 
 
 ### Request Object(Customized)
@@ -10,7 +10,7 @@
 | --------------------------------------- | :--------------------------------------: | :--------------------------------------- |
 | copyMetaData                                |           bool (default false)           | (apply to image only) Enable or disable copyMetaData. When `compressImage = false`, this options will be ignored          |
 | checkProjectionType                                   |                  bool (default false)                  |(apply to image only)  If enable this options, it will check photo metadata and append the `is360Photo` in response object |
-| compressImage                                  |                  bool (default ture)                  | (apply to image only) Add option to disable the compress logic and return the source image picked  |
+| compressImage  (iOS only, Android will not compress image if no `compressXXXXX` options)                                |                  bool (default ture)                  | (apply to image only) Add option to disable the compress logic and return the source image picked  |
 
 ### Response Object
 

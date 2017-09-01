@@ -18,6 +18,13 @@ import android.support.v4.content.FileProvider;
 import android.util.Base64;
 import android.webkit.MimeTypeMap;
 
+import com.adobe.xmp.XMPIterator;
+import com.adobe.xmp.XMPMeta;
+import com.adobe.xmp.properties.XMPPropertyInfo;
+import com.drew.imaging.ImageMetadataReader;
+import com.drew.imaging.ImageProcessingException;
+import com.drew.metadata.Metadata;
+import com.drew.metadata.xmp.XmpDirectory;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.Promise;
@@ -41,6 +48,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -73,7 +81,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
     private boolean hideBottomControls = false;
     private boolean enableRotationGesture = false;
     private ReadableMap options;
-
+    private boolean checkProjectionType = false;
 
     //Grey 800
     private final String DEFAULT_TINT = "#424242";
@@ -122,6 +130,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         showCropGuidelines = options.hasKey("showCropGuidelines") ? options.getBoolean("showCropGuidelines") : showCropGuidelines;
         hideBottomControls = options.hasKey("hideBottomControls") ? options.getBoolean("hideBottomControls") : hideBottomControls;
         enableRotationGesture = options.hasKey("enableRotationGesture") ? options.getBoolean("enableRotationGesture") : enableRotationGesture;
+        checkProjectionType = options.hasKey("checkProjectionType") ? options.getBoolean("checkProjectionType") : checkProjectionType;
         this.options = options;
     }
 
@@ -535,6 +544,9 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         image.putString("mime", options.outMimeType);
         image.putInt("size", (int) new File(compressedImagePath).length());
 
+        if(checkProjectionType)
+            image.putString("is360Photo", is360Photo(compressedImage, options)?"Y":"N");
+
         if (includeBase64) {
             image.putString("data", getBase64StringFromFile(compressedImagePath));
         }
@@ -708,5 +720,30 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
 
         return image;
 
+    }
+
+    private boolean is360Photo(File image, BitmapFactory.Options options){
+        try {
+            Metadata metadata = null;
+            metadata = ImageMetadataReader.readMetadata(image);
+            Collection<XmpDirectory> xmpDirectories = metadata.getDirectoriesOfType(XmpDirectory.class);
+            for (XmpDirectory xmpDirectory : xmpDirectories) {
+                XMPMeta xmpMeta = xmpDirectory.getXMPMeta();
+                XMPIterator iterator = xmpMeta.iterator();
+                while (iterator.hasNext()) {
+                    XMPPropertyInfo xmpPropertyInfo = (XMPPropertyInfo)iterator.next();
+                    if(xmpPropertyInfo.getPath() != null && xmpPropertyInfo.getPath().toLowerCase().contains("projectiontype") &&
+                            xmpPropertyInfo.getValue() != null && xmpPropertyInfo.getValue().equalsIgnoreCase("equirectangular") &&
+                            options.outWidth > 0 && options.outWidth < 6000 &&
+                            options.outHeight > 0 && options.outHeight < 3000 &&
+                            options.outWidth == options.outHeight * 2){
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 }
