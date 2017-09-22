@@ -19,3 +19,4 @@
 | ------------------------- | :----: | :--------------------------------------- |
 | is360Photo                      | string | (apply to image only) "Y" or "N", identify logic refer to https://www.facebook.com/notes/eric-cheng/editing-360-photos-injecting-metadata/10156930564975277                  |
 | mime                      | string | (apply to image only) updated a little bit. if `compressImage = false`, it will use `image/` + `jpg` , `png`..etc. If file no extension, it will use UTI |
+| md5                      | string | (apply to image only) iOS - not the actual md5 of returned image. Becuase I need the md5 of the picked image for verify duplicate selection |
