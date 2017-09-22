@@ -34,6 +34,8 @@
 #define ERROR_CANNOT_PROCESS_VIDEO_KEY @"E_CANNOT_PROCESS_VIDEO"
 #define ERROR_CANNOT_PROCESS_VIDEO_MSG @"Cannot process video data"
 
+#import "NSData+MD5.h"
+
 @implementation ImageResult
 @end
 
@@ -501,6 +503,8 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  
                                  NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: sourceURL.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]];
                                  
+                                 [responseForResolve setValue:[imageData MD5] forKey:@"md5"];
+                                 
                                  if([self.options objectForKey:@"checkProjectionType"])
                                      [responseForResolve
                                       setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
@@ -599,6 +603,8 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: sourceURL.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
                                                                                                                            ]];
                                  
+                                 [responseForResolve setValue:[imageData MD5] forKey:@"md5"];
+                                 
                                  if([self.options objectForKey:@"checkProjectionType"])
                                      [responseForResolve
                                       setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
@@ -655,15 +661,20 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
         // Wait for viewController to dismiss before resolving, or we lose the ability to display
         // Alert.alert in the .then() handler.
         [viewController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
-            self.resolve([self createAttachmentResponse:filePath
-                                          withSourceURL:sourceURL
-                                    withLocalIdentifier:localIdentifier
-                                           withFilename:filename
-                                              withWidth:imageResult.width
-                                             withHeight:imageResult.height
-                                               withMime:imageResult.mime
-                                               withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
-                                               withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]);
+            NSMutableDictionary* responseForResolve = [NSMutableDictionary new];
+            [responseForResolve setValuesForKeysWithDictionary:[self createAttachmentResponse:filePath
+                                                                                withSourceURL:sourceURL
+                                                                          withLocalIdentifier:localIdentifier
+                                                                                 withFilename:filename
+                                                                                    withWidth:imageResult.width
+                                                                                   withHeight:imageResult.height
+                                                                                     withMime:imageResult.mime
+                                                                                     withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
+                                                                                     withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]];
+            
+            [responseForResolve setValue:[imageResult.data MD5] forKey:@"md5"];
+            
+            self.resolve(responseForResolve);
         }]];
     }
 }
@@ -767,15 +778,20 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
     }
 
     [self dismissCropper:controller dismissAll: YES completion:[self waitAnimationEnd:^{
-        self.resolve([self createAttachmentResponse:filePath
-                                      withSourceURL: self.croppingFile[@"sourceURL"]
-                                          withLocalIdentifier: self.croppingFile[@"localIdentifier"]
-                                          withFilename: self.croppingFile[@"filename"]
-                                          withWidth:imageResult.width
-                                         withHeight:imageResult.height
-                                           withMime:imageResult.mime
-                                           withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
-                                           withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]);
+        NSMutableDictionary* responseForResolve = [NSMutableDictionary new];
+        [responseForResolve setValuesForKeysWithDictionary:[self createAttachmentResponse:filePath
+                                                                            withSourceURL: self.croppingFile[@"sourceURL"]
+                                                                      withLocalIdentifier: self.croppingFile[@"localIdentifier"]
+                                                                             withFilename: self.croppingFile[@"filename"]
+                                                                                withWidth:imageResult.width
+                                                                               withHeight:imageResult.height
+                                                                                 withMime:imageResult.mime
+                                                                                 withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]
+                                                                                 withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]];
+        
+        [responseForResolve setValue:[imageResult.data MD5] forKey:@"md5"];
+        
+        self.resolve(responseForResolve);
     }]];
 }
 

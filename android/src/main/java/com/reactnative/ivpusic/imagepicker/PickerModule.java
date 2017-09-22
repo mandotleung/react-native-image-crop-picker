@@ -46,6 +46,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -547,6 +548,8 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         if(checkProjectionType)
             image.putString("is360Photo", is360Photo(compressedImage, options)?"Y":"N");
 
+        image.putString("md5", getFileMD5(compressedImagePath));
+        
         if (includeBase64) {
             image.putString("data", getBase64StringFromFile(compressedImagePath));
         }
@@ -745,5 +748,32 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
             e.printStackTrace();
         }
         return false;
+    }
+
+    private String getFileMD5(String filePath) {
+        try {
+            InputStream in = new FileInputStream(new File(filePath));
+
+            StringBuffer md5 = new StringBuffer();
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] dataBytes = new byte[1024];
+
+            int nread = 0;
+            while ((nread = in.read(dataBytes)) != -1) {
+                md.update(dataBytes, 0, nread);
+            }
+
+            byte[] mdbytes = md.digest();
+
+            // convert the byte to hex format
+            for (int i = 0; i < mdbytes.length; i++) {
+                md5.append(Integer.toString((mdbytes[i] & 0xff) + 0x100, 16).substring(1));
+            }
+            in.close();
+            return md5.toString().toLowerCase();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
     }
 }
