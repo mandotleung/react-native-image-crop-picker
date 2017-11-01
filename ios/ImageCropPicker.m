@@ -472,7 +472,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  UIImage *imageT = [imgT fixOrientation];
                                  
                                  ImageResult *imageResult = [[ImageResult alloc] init];
-                                 if(![self.options objectForKey:@"compressImage"])
+                                 if(![[self.options objectForKey:@"compressImage"] boolValue])
                                  {
                                      imageResult.width = [NSNumber numberWithFloat:imageT.size.width];
                                      imageResult.height = [NSNumber numberWithFloat:imageT.size.height];
@@ -487,7 +487,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  
                                  BOOL success = true;
                                  //if not compressImage, no need to copyMetaData
-                                 if([self.options objectForKey:@"compressImage"] && [self.options objectForKey:@"copyMetaData"])
+                                 if([[self.options objectForKey:@"compressImage"] boolValue] && [[self.options objectForKey:@"copyMetaData"] boolValue])
                                  {
                                      success = [self addMetaDataToFilePath:filePath fromSrc:imageData AndJpg:imageResult.data];
                                  }
@@ -505,7 +505,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  
                                  [responseForResolve setValue:[imageData MD5] forKey:@"md5"];
                                  
-                                 if([self.options objectForKey:@"checkProjectionType"])
+                                 if([[self.options objectForKey:@"checkProjectionType"] boolValue])
                                      [responseForResolve
                                       setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
                                       forKey:@"is360Photo"];
@@ -566,7 +566,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              UIImage* image = [UIImage imageWithData:imageData];
                              
                              ImageResult *imageResult = [[ImageResult alloc] init];
-                             if(![self.options objectForKey:@"compressImage"])
+                             if(![[self.options objectForKey:@"compressImage"] boolValue])
                              {
                                  imageResult.width = [NSNumber numberWithFloat:image.size.width];
                                  imageResult.height = [NSNumber numberWithFloat:image.size.height];
@@ -581,7 +581,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              
                              BOOL success = true;
                              //if not compressImage, no need to copyMetaData
-                             if([self.options objectForKey:@"compressImage"] && [self.options objectForKey:@"copyMetaData"])
+                             if([[self.options objectForKey:@"compressImage"] boolValue] && [[self.options objectForKey:@"copyMetaData"] boolValue])
                              {
                                  success = [self addMetaDataToFilePath:filePath fromSrc:imageData AndJpg:imageResult.data];
                              }
@@ -605,7 +605,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  
                                  [responseForResolve setValue:[imageData MD5] forKey:@"md5"];
                                  
-                                 if([self.options objectForKey:@"checkProjectionType"])
+                                 if([[self.options objectForKey:@"checkProjectionType"] boolValue])
                                      [responseForResolve
                                       setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
                                       forKey:@"is360Photo"];
