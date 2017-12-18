@@ -160,6 +160,43 @@ RCT_EXPORT_METHOD(openCamera:(NSDictionary *)options
     UIImage *chosenImage = [info objectForKey:UIImagePickerControllerOriginalImage];
     UIImage *chosenImageT = [chosenImage fixOrientation];
     
+    //-------Below code will be useful if user require image from camera roll include metadata-----------
+    //    __block NSString *localIdentifier = @"";
+    //    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+    //        PHAssetChangeRequest *changeRequest = [PHAssetChangeRequest creationRequestForAssetFromImage:[info valueForKey:UIImagePickerControllerOriginalImage]];
+    //        PHObjectPlaceholder *assetPlaceholder = changeRequest.placeholderForCreatedAsset;
+    //        localIdentifier = assetPlaceholder.localIdentifier;
+    //    } completionHandler:^(BOOL success, NSError *error) {
+    //        if (success) {
+    //            PHImageRequestOptions* options = [[PHImageRequestOptions alloc] init];
+    //            options.synchronous = NO;
+    //            options.networkAccessAllowed = YES;
+    //
+    //            PHFetchResult *result = [PHAsset fetchAssetsWithLocalIdentifiers: @[localIdentifier] options:nil];
+    //            PHAsset *resultAsset = [result firstObject];
+    //            [[PHImageManager defaultManager] requestImageDataForAsset:resultAsset
+    //                                                              options:options
+    //                                                        resultHandler:^(NSData *imageData, NSString *dataUTI, UIImageOrientation orientation, NSDictionary *info) {
+    //                                                            CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)imageData, NULL);
+    //
+    //                                                            CGImageMetadataRef metadata = CGImageSourceCopyMetadataAtIndex(source,0,NULL);
+    //
+    //                                                            NSArray *metadataArray = nil;
+    //
+    //                                                            if (metadata) {
+    //                                                                metadataArray = CFBridgingRelease(CGImageMetadataCopyTags(metadata));
+    //                                                                CFRelease(metadata);
+    //                                                            }
+    //                                                            CFRelease(source);
+    //                                                        }];
+    //            NSLog(@"Success");
+    //        }
+    //        else {
+    //            NSLog(@"write error : %@",error);
+    //        }
+    //    }];
+    //------------- will be useful if user require image from camera roll include metadata -------------
+    
     [self processSingleImagePick:chosenImageT withViewController:picker withSourceURL:self.croppingFile[@"sourceURL"] withLocalIdentifier:self.croppingFile[@"localIdentifier"] withFilename:self.croppingFile[@"filename"]];
 }
 
@@ -462,12 +499,20 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                      requestImageDataForAsset:phAsset
                      options:options
                      resultHandler:^(NSData *imageData, NSString *dataUTI, UIImageOrientation orientation, NSDictionary *info) {
+                         bool isHEIF = [dataUTI isEqualToString:@"public.heif"] || [dataUTI isEqualToString:@"public.heic"];
                          
                          NSURL *sourceURL = [info objectForKey:@"PHImageFileURLKey"];
                          
                          dispatch_async(dispatch_get_main_queue(), ^{
                              [lock lock];
                              @autoreleasepool {
+                                 NSData * jpgData = imageData;
+                                 if (isHEIF) {
+                                     CIImage *ciImage = [CIImage imageWithData:imageData];
+                                     CIContext *context = [CIContext context];
+                                     jpgData = [context JPEGRepresentationOfImage:ciImage colorSpace:ciImage.colorSpace options:@{}];
+                                 }
+                                 
                                  UIImage *imgT = [UIImage imageWithData:imageData];
                                  UIImage *imageT = [imgT fixOrientation];
                                  
@@ -476,14 +521,14 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                  {
                                      imageResult.width = [NSNumber numberWithFloat:imageT.size.width];
                                      imageResult.height = [NSNumber numberWithFloat:imageT.size.height];
-                                     imageResult.image = imageT;
-                                     imageResult.data = imageData;
-                                     imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? [sourceURL.pathExtension lowercaseString]:dataUTI)];
+                                     //                                     imageResult.image = imageT;
+                                     imageResult.data = isHEIF ? jpgData : imageData;
+                                     imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", isHEIF ? @"jpeg":(sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? [sourceURL.pathExtension lowercaseString]:dataUTI)];
                                  }
                                  else {
                                      imageResult = [self.compression compressImage:imageT withOptions:self.options];
                                  }
-                                 NSString *filePath = [self persistFile:imageResult.data];
+                                 NSString *filePath = [self persistFile:imageResult.data withExtension:isHEIF? nil: [NSString stringWithFormat:@".%@", sourceURL.pathExtension]];
                                  
                                  BOOL success = true;
                                  //if not compressImage, no need to copyMetaData
@@ -501,13 +546,13 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                                      return;
                                  }
                                  
-                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: sourceURL.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]];
+                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: filePath.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]]];
                                  
-                                 [responseForResolve setValue:[imageData MD5] forKey:@"md5"];
+                                 [responseForResolve setValue:[(isHEIF ? jpgData : imageData) MD5] forKey:@"md5"];
                                  
                                  if([[self.options objectForKey:@"checkProjectionType"] boolValue])
                                      [responseForResolve
-                                      setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
+                                      setValue: ([self is360Photo:(isHEIF ? jpgData : imageData) size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
                                       forKey:@"is360Photo"];
                                  
                                  [selections addObject:responseForResolve];
@@ -554,6 +599,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                  resultHandler:^(NSData *imageData, NSString *dataUTI,
                                  UIImageOrientation orientation,
                                  NSDictionary *info) {
+                     bool isHEIF = [dataUTI isEqualToString:@"public.heif"] || [dataUTI isEqualToString:@"public.heic"];
                      NSURL *sourceURL = [info objectForKey:@"PHImageFileURLKey"];
                      dispatch_async(dispatch_get_main_queue(), ^{
                          [indicatorView stopAnimating];
@@ -563,6 +609,13 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              [self processSingleImagePick:[UIImage imageWithData:imageData] withViewController:imagePickerController withSourceURL:[sourceURL absoluteString] withLocalIdentifier:phAsset.localIdentifier withFilename:[phAsset valueForKey:@"filename"]];
                          else
                          {
+                             NSData * jpgData = imageData;
+                             if (isHEIF) {
+                                 CIImage *ciImage = [CIImage imageWithData:imageData];
+                                 CIContext *context = [CIContext context];
+                                 jpgData = [context JPEGRepresentationOfImage:ciImage colorSpace:ciImage.colorSpace options:@{}];
+                             }
+                             
                              UIImage* image = [UIImage imageWithData:imageData];
                              
                              ImageResult *imageResult = [[ImageResult alloc] init];
@@ -570,14 +623,14 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              {
                                  imageResult.width = [NSNumber numberWithFloat:image.size.width];
                                  imageResult.height = [NSNumber numberWithFloat:image.size.height];
-                                 imageResult.image = image;
-                                 imageResult.data = imageData;
-                                 imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? [sourceURL.pathExtension lowercaseString]:dataUTI)];
+                                 //                                 imageResult.image = image;
+                                 imageResult.data = (isHEIF ? jpgData : imageData);
+                                 imageResult.mime = [NSString stringWithFormat:@"%@%@", @"image/", isHEIF ? @"jpeg" : (sourceURL.pathExtension != nil && sourceURL.pathExtension.length > 0 ? [sourceURL.pathExtension lowercaseString]:dataUTI)];
                              }
                              else
                                  imageResult = [self.compression compressImage:image withOptions:self.options];
                              
-                             NSString *filePath = [self persistFile:imageResult.data];
+                             NSString *filePath = [self persistFile:imageResult.data withExtension:isHEIF? nil:[NSString stringWithFormat:@".%@", sourceURL.pathExtension]];
                              
                              BOOL success = true;
                              //if not compressImage, no need to copyMetaData
@@ -600,14 +653,14 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              // Alert.alert in the .then() handler.
                              [imagePickerController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
                                  
-                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: sourceURL.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
+                                 NSMutableDictionary* responseForResolve = [NSMutableDictionary dictionaryWithDictionary: [self createAttachmentResponse:filePath withSourceURL:sourceURL.absoluteString                                                                                                                              withLocalIdentifier: phAsset.localIdentifier                                                                                                                                            withFilename: filePath.lastPathComponent                                                                                                                                               withWidth:imageResult.width                                                                                                                                              withHeight:imageResult.height                                                                                                                                                withMime:imageResult.mime                                                                                                                                                withSize:[NSNumber numberWithUnsignedInteger:imageResult.data.length]                                                                                                                                                withData:[[self.options objectForKey:@"includeBase64"] boolValue] ? [imageResult.data base64EncodedStringWithOptions:0] : [NSNull null]
                                                                                                                            ]];
                                  
-                                 [responseForResolve setValue:[imageData MD5] forKey:@"md5"];
+                                 [responseForResolve setValue:[(isHEIF ? jpgData : imageData) MD5] forKey:@"md5"];
                                  
                                  if([[self.options objectForKey:@"checkProjectionType"] boolValue])
                                      [responseForResolve
-                                      setValue: ([self is360Photo:imageData size:CGSizeMake( [imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
+                                      setValue: ([self is360Photo:(isHEIF ? jpgData : imageData) size:CGSizeMake([imageResult.width floatValue], [imageResult.height floatValue])]?@"Y":@"N")
                                       forKey:@"is360Photo"];
                                  
                                  self.resolve(responseForResolve);
@@ -630,7 +683,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
 // this method will take care of attaching image metadata, and sending image to cropping controller
 // or to user directly
 - (void) processSingleImagePick:(UIImage*)image withViewController:(UIViewController*)viewController withSourceURL:(NSString*)sourceURL withLocalIdentifier:(NSString*)localIdentifier withFilename:(NSString*)filename {
-
+    
     if (image == nil) {
         [viewController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
             self.reject(ERROR_PICKER_NO_DATA_KEY, ERROR_PICKER_NO_DATA_MSG, nil);
@@ -650,14 +703,15 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
         [self startCropping:image];
     } else {
         ImageResult *imageResult = [self.compression compressImage:image withOptions:self.options];
-        NSString *filePath = [self persistFile:imageResult.data];
+        
+        NSString *filePath = [self persistFile:imageResult.data withExtension:nil];
         if (filePath == nil) {
             [viewController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
                 self.reject(ERROR_CANNOT_SAVE_IMAGE_KEY, ERROR_CANNOT_SAVE_IMAGE_MSG, nil);
             }]];
             return;
         }
-
+        
         // Wait for viewController to dismiss before resolving, or we lose the ability to display
         // Alert.alert in the .then() handler.
         [viewController dismissViewControllerAnimated:YES completion:[self waitAnimationEnd:^{
@@ -769,7 +823,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
     UIImage *resizedImage = [croppedImage resizedImageToFitInSize:resizedImageSize scaleIfSmaller:YES];
     ImageResult *imageResult = [self.compression compressImage:resizedImage withOptions:self.options];
 
-    NSString *filePath = [self persistFile:imageResult.data];
+    NSString *filePath = [self persistFile:imageResult.data withExtension:nil];
     if (filePath == nil) {
         [self dismissCropper:controller dismissAll: YES completion:[self waitAnimationEnd:^{
             self.reject(ERROR_CANNOT_SAVE_IMAGE_KEY, ERROR_CANNOT_SAVE_IMAGE_MSG, nil);
@@ -797,18 +851,21 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
 
 // at the moment it is not possible to upload image by reading PHAsset
 // we are saving image and saving it to the tmp location where we are allowed to access image later
-- (NSString*) persistFile:(NSData*)data {
+- (NSString*) persistFile:(NSData*)data withExtension:(NSString*)extension {
     // create temp file
     NSString *tmpDirFullPath = [self getTmpDirectory];
     NSString *filePath = [tmpDirFullPath stringByAppendingString:[[NSUUID UUID] UUIDString]];
-    filePath = [filePath stringByAppendingString:@".jpg"];
-
+    if(extension)
+        filePath = [filePath stringByAppendingString:extension];
+    else
+        filePath = [filePath stringByAppendingString:@".jpg"];
+    
     // save cropped file
     BOOL status = [data writeToFile:filePath atomically:YES];
     if (!status) {
         return nil;
     }
-
+    
     return filePath;
 }
 

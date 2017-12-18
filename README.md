@@ -3,7 +3,7 @@
 - (iOS only)Add options return source image data instead of compress
 - Check is 360 photo
 - return source image md5 (iOS - not the actual md5 of returned image. Becuase I need the md5 of the picked image for verify duplicate selection)
-
+- return jpg instead of heif/heic(without save to lib)
 
 ### Request Object(Customized)
 
